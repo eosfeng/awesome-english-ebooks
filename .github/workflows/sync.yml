@@ -1,9 +1,9 @@
 name: 每周自动下载外刊并同步至腾讯云COS
 
 on:
-  workflow_dispatch:          # 允许手动触发
+  workflow_dispatch:
   schedule:
-    - cron: '0 18 * * 5'      # 北京时间每周六凌晨2点运行
+    - cron: '0 18 * * 5'
 
 env:
   TZ: Asia/Shanghai
@@ -27,7 +27,6 @@ jobs:
 
       - name: 下载并上传最新期刊
         run: |
-          # 杂志列表 (本地显示名|仓库文件夹名)
           declare -A MAGAZINES=(
             ["经济学人"]="01_economist"
             ["纽约客"]="02_new_yorker"
@@ -39,8 +38,8 @@ jobs:
             path="${MAGAZINES[$name]}"
             echo ">>> 正在处理: $name"
             
-            # 获取最新一期文件夹名
-            latest_dir=$(curl -s "https://api.github.com/repos/hehonghui/awesome-english-ebooks/contents/$path" | grep -oP '"name": "\K[0-9]{4}\.[0-9]{2}\.[0-9]{2}' | head -n1)
+            # 修复版：兼容 GitHub Actions 环境
+            latest_dir=$(curl -s "https://api.github.com/repos/hehonghui/awesome-english-ebooks/contents/$path" | grep -o '"name": "[0-9]\{4\}\.[0-9]\{2\}\.[0-9]\{2\}' | head -n1 | sed 's/"name": "//' | sed 's/"//')
             
             if [ -z "$latest_dir" ]; then
               echo "未找到 $name 的最新目录"
@@ -49,19 +48,16 @@ jobs:
             
             echo "最新期数: $latest_dir"
             
-            # 创建临时目录
             mkdir -p "./temp/$name"
             
-            # 下载三种格式
             for ext in epub mobi pdf; do
               file_url="https://raw.githubusercontent.com/hehonghui/awesome-english-ebooks/main/$path/$latest_dir/$name.$latest_dir.$ext"
+              echo "下载: $file_url"
               curl -L -f -o "./temp/$name/$name.$latest_dir.$ext" "$file_url" || echo "文件 $ext 不存在，跳过"
             done
             
-            # 上传到COS (路径: /外文电子期刊下载/经济学人/文件名)
             coscmd upload -r "./temp/$name/" "/外文电子期刊下载/$name/" --ignore "*" --include "*.epub" --include "*.mobi" --include "*.pdf"
             
-            # 清理
             rm -rf "./temp/$name"
             echo ">>> $name 处理完成"
           done
